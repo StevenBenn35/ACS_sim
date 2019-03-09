@@ -1,7 +1,7 @@
-function [ roll_ctrl, elevation_ctrl, heading_ctrl, ecr, hcr, ax_thrust, M, M_ax,calc_mass,state, output]               ...
+function [ roll_ctrl, elevation_ctrl, heading_ctrl, ecr, hcr, ax_thrust, M, M_ax,calc_mass,state, output,thruster_props]               ...
             = event_sequence(roll_ctrl, elevation_ctrl, heading_ctrl, ecr, hcr, ...
               sim_complete,state,thruster,M,ax_thrust, ...
-              dt,pitch,yaw,g0,i,calc_mass,output)
+              dt,pitch,yaw,g0,i,calc_mass,output,thruster_props)
       
     sequence = sim_complete.sequence;
     event    = sim_complete.event;
@@ -34,12 +34,12 @@ function [ roll_ctrl, elevation_ctrl, heading_ctrl, ecr, hcr, ax_thrust, M, M_ax
     % Maneuver #3: Spin-up w/Nutation Damping + Axial Thrust
     elseif sequence(event) == 3 
         spin_up = true;
-        [roll_ctrl,M_r] = roll_ctrl.controller_MAIN(spin_up,i);
+        [roll_ctrl,M_r,thruster_props] = roll_ctrl.controller_MAIN(spin_up,thruster_props,i);
         M_ax = ax_thrust.activate(i);
-        [elevation_ctrl, Mp] = ... 
-            elevation_ctrl.controller_MAIN(state(8,i),state(2,i),thruster,M_prev,pitch,i);
-        [heading_ctrl,My] =  ...
-            heading_ctrl.controller_MAIN(state(9,i),state(3,i),thruster,M_prev,yaw,i);
+        [elevation_ctrl, Mp,thruster_props] = ... 
+            elevation_ctrl.controller_MAIN(state(8,i),state(2,i),thruster,M_prev,pitch,thruster_props,i);
+        [heading_ctrl,My,thruster_props] =  ...
+            heading_ctrl.controller_MAIN(state(9,i),state(3,i),thruster,M_prev,yaw,thruster_props,i);
         M = M_r+M_ax+Mp+My;
         ax_thrust = ax_thrust.calc_mburn(g0,i);
         completed = sim_complete.eval_complete(3,state(1,i));
@@ -52,17 +52,17 @@ function [ roll_ctrl, elevation_ctrl, heading_ctrl, ecr, hcr, ax_thrust, M, M_ax
         ax_thrust = ax_thrust.calc_mburn(g0,i);
         
         spin_up = false;
-        [roll_ctrl,M_r] = roll_ctrl.controller_MAIN(spin_up,i);
+        [roll_ctrl,M_r,thruster_props] = roll_ctrl.controller_MAIN(spin_up,thruster_props,i);
         completed = sim_complete.eval_complete(4,state(1,i));
         
 %         if ~isequal(sign(state(1,i-1)),sign(state(1,i)))
 %             completed = true;
 %         end
         
-        [elevation_ctrl, Mp] = ... 
-            elevation_ctrl.controller_MAIN(state(8,i),state(2,i),thruster,M_prev,pitch,i);
-        [heading_ctrl,My] =  ...
-            heading_ctrl.controller_MAIN(state(9,i),state(3,i),thruster,M_prev,yaw,i);
+        [elevation_ctrl, Mp, thruster_props] = ... 
+            elevation_ctrl.controller_MAIN(state(8,i),state(2,i),thruster,M_prev,pitch,thruster_props,i);
+        [heading_ctrl,My,thruster_props] =  ...
+            heading_ctrl.controller_MAIN(state(9,i),state(3,i),thruster,M_prev,yaw,thruster_props,i);
         
         if completed == true
             state(1,i) = 0;
@@ -77,10 +77,10 @@ function [ roll_ctrl, elevation_ctrl, heading_ctrl, ecr, hcr, ax_thrust, M, M_ax
         M_ax = ax_thrust.activate(i);
         ax_thrust = ax_thrust.calc_mburn(g0,i);
         
-        [elevation_ctrl, Mp] = ... 
-            elevation_ctrl.controller_MAIN(state(8,i),state(2,i),thruster,M_prev,pitch,i);
-        [heading_ctrl,My] =  ...
-            heading_ctrl.controller_MAIN(state(9,i),state(3,i),thruster,M_prev,yaw,i);
+        [elevation_ctrl, Mp,thruster_props] = ... 
+            elevation_ctrl.controller_MAIN(state(8,i),state(2,i),thruster,M_prev,pitch,thruster_props,i);
+        [heading_ctrl,My,thruster_props] =  ...
+            heading_ctrl.controller_MAIN(state(9,i),state(3,i),thruster,M_prev,yaw,thruster_props,i);
         
         M = M_ax+Mp+My;
         
@@ -99,10 +99,10 @@ function [ roll_ctrl, elevation_ctrl, heading_ctrl, ecr, hcr, ax_thrust, M, M_ax
         M_ax = ax_thrust.activate(i);
         ax_thrust = ax_thrust.calc_mburn(g0,i);
         
-        [ecr, Mp] = ... 
-            ecr.controller_MAIN(state(8,i),state(2,i),thruster,M_prev,pitch,i);
-        [hcr,My] =  ...
-            hcr.controller_MAIN(state(9,i),state(3,i),thruster,M_prev,yaw,i);
+        [ecr, Mp,thruster_props] = ... 
+            ecr.controller_MAIN(state(8,i),state(2,i),thruster,M_prev,pitch,thruster_props,i);
+        [hcr,My,thruster_props] =  ...
+            hcr.controller_MAIN(state(9,i),state(3,i),thruster,M_prev,yaw,thruster_props,i);
         
         M = Mp+My+M_ax;
         

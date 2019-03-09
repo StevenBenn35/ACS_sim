@@ -16,7 +16,8 @@ classdef R_Control < handle
         fired          % thruster activation history
         Drate_min      % minimum induced change in rate, rad/sec
         mburn          % array of mass burned at each timestep, lbm
-        g0             % reference gravity, 32.174 ft/sec^2         
+        g0             % reference gravity, 32.174 ft/sec^2 
+        Fsav
     end
     
     methods
@@ -40,6 +41,7 @@ classdef R_Control < handle
             obj.g0            = gref;
             obj.tmin          = thruster(1,1).t_min;           
             obj.mburn         = zeros(dim+1,1);
+            obj.Fsav          = zeros(dim+1,LRT);
 
             % calculate the minimum rate change based on tmin
             obj = calc_min_rate_change(obj,rT,I);
@@ -48,9 +50,9 @@ classdef R_Control < handle
             complete.spin_down_tol = obj.Drate_min;
         end
         
-        function [obj,M] = controller_MAIN(obj,spin_up,i)
+        function [obj,M,thruster_props] = controller_MAIN(obj,spin_up,thruster_props,i)
             % apply a burn to spin up or spin down
-            [obj,M] = burn_command(obj,spin_up,i);
+            [obj,M,thruster_props] = burn_command(obj,spin_up,thruster_props,i);
             
             % update firing timers of activated thrusters
             obj = update_timers(obj,i);
@@ -59,7 +61,7 @@ classdef R_Control < handle
             obj = calc_mburn(obj,i);
         end
         
-        function [obj,M] = burn_command(obj,spin_up,i)
+        function [obj,M,thruster_props] = burn_command(obj,spin_up,thruster_props,i)
             wT       = [];                      
             thruster = obj.R_thrusters;
             LT       = length(thruster);
@@ -74,8 +76,17 @@ classdef R_Control < handle
             % create array of thrusters fired at current timestep 
             for k=1:LT
                 if thruster(1,k).sign_M == condition
+                    obj.fired(i,k)=true;
+                    if obj.t_single_fire(1,k)==0
+                        thruster_props=add_variability(thruster_props);
+                        force=P_to_F(thruster_props);
+                        thruster(k).F=(force/4.448)*(thruster(k).F/norm(thruster(k).F));
+                        thruster(k).mag=norm(thruster(k).F);
+                        thruster(k).isp=thruster_props.isp;
+                    end
+                    obj.Fsav(i,k)=thruster(k).mag;
                     wT = [wT, thruster(k)];
-                    obj.fired(i,k) = true;
+
                 end
             end
             

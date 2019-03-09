@@ -20,6 +20,7 @@ classdef PY_Control < handle
         % timing
         t_total_fire
         t_single_fire
+        t_trail_off
         tmin
         dt       
         
@@ -52,6 +53,8 @@ classdef PY_Control < handle
         % other
         mburn
         g
+        Fsav
+        decayy
                             
     end
     
@@ -78,6 +81,22 @@ classdef PY_Control < handle
             obj.P_thrusters = pT;
             obj.Y_thrusters = yT;
             
+            for k=1:length(pT)
+                mag_F=nonzeros(obj.P_thrusters(1,k).F);
+                sign_F=mag_F/abs(mag_F);
+                obj.P_thrusters(1,k).unit_F=obj.P_thrusters(1,k).F;
+                obj.P_thrusters(1,k).unit_F(obj.P_thrusters(1,k).unit_F~=0)=1;
+                obj.P_thrusters(1,k).unit_F=obj.P_thrusters(1,k).unit_F.*sign_F;
+            end
+            
+            for k=1:length(yT)
+                mag_F=nonzeros(obj.Y_thrusters(1,k).F);
+                sign_F=mag_F/abs(mag_F);
+                obj.Y_thrusters(1,k).unit_F=obj.Y_thrusters(1,k).F;
+                obj.Y_thrusters(1,k).unit_F(obj.Y_thrusters(1,k).unit_F~=0)=1;
+                obj.Y_thrusters(1,k).unit_F=obj.Y_thrusters(1,k).unit_F.*sign_F;
+            end            
+            
             % array lengths for pitch and yaw thrusters
             LPT = length(pT);
             LYT = length(yT);
@@ -94,13 +113,19 @@ classdef PY_Control < handle
             if type == 2
                 obj.t_total_fire  = zeros(1,LPT);
                 obj.t_single_fire = zeros(1,LPT);
+                obj.t_trail_off   = zeros(1,LPT);
                 obj.fired         = false(dim+1,LPT);
                 obj.coast(1,1:LPT)= true;
+                obj.Fsav          = zeros(dim+1,LPT);
+                obj.decayy         = false(1,LPT);
             elseif type == 3
                 obj.t_total_fire  = zeros(1,LYT);
                 obj.t_single_fire = zeros(1,LYT);
+                obj.t_trail_off    = zeros(1,LYT);
                 obj.fired         = false(dim+1,LYT);
-                obj.coast(1,1:LYT)= true;                
+                obj.coast(1,1:LYT)= true; 
+                obj.Fsav          = zeros(dim+1,LYT);
+                obj.decayy         = false(1,LYT);
             else
                 error('Invalid type input');
             end
@@ -139,9 +164,10 @@ classdef PY_Control < handle
                            
             obj.mburn = zeros(dim+1,1);
             
+            
         end
-        
-        function [obj,M] = controller_MAIN(obj,currPos,currRate,thruster,M_prev,type,i)
+
+        function [obj,M,thruster_props] = controller_MAIN(obj,currPos,currRate,thruster,M_prev,type,thruster_props,i)
             % calculate the switching line crossings
             obj = sl_crossings(obj,currPos,currRate,i);
             
@@ -149,7 +175,7 @@ classdef PY_Control < handle
             history = get_fire_history(obj,i);
             
             % initiate burn command
-            [obj,M] = burn_commands(obj,history,M_prev,type,i);
+            [obj,M,thruster_props] = burn_commands(obj,history,M_prev,type,thruster_props,i);
             
             % update timers of all applicable thrusters
             obj = update_timers(obj,i);
@@ -199,7 +225,7 @@ classdef PY_Control < handle
             end
         end
         
-        function [obj,M] = burn_commands(obj,history,M_prev,type,i)
+        function [obj,M,thruster_props] = burn_commands(obj,history,M_prev,type,thruster_props,i)
             % use the applicable thrusters for pitch/yaw controller
             if type == 2
                 thruster = obj.P_thrusters;
@@ -213,15 +239,83 @@ classdef PY_Control < handle
                 
                 % repeat the previous fire if tmin hasn't been reached.
                 % fire based on phase plane location if tmin was reached.
-                if obj.t_single_fire(1,index(1))<= obj.tmin
+                if obj.t_single_fire(1,index(1))< obj.tmin && obj.decayy(1,index)==false
                     [obj,M] = repeat_fire(obj,index,M_prev,type,i);
+                elseif obj.t_single_fire(1,index(1))> (obj.tmin-obj.dt) && obj.decayy(1,index)==false
+                    obj.decayy(1,index) = true;
+                    [obj,M] = trail_off(obj,thruster,thruster_props,index,type,i);
+                elseif obj.decayy(1,index) == true
+                    [obj,M] = trail_off(obj,thruster,thruster_props,index,type,i);
                 else
-                    [obj,M] = fire_by_location(obj,history,thruster,i);
+                    [obj,M,thruster_props] = fire_by_location(obj,history,thruster,thruster_props,type,i);
                 end
                 
             else
-                [obj,M] = fire_by_location(obj,history,thruster,i);
+                [obj,M,thruster_props] = fire_by_location(obj,history,thruster,thruster_props,type,i);
             end
+        end
+        
+        function [obj,M] = trail_off(obj,thruster,thruster_props,index,type,i)
+            
+            P_inf = thruster_props.P_inf;
+            P0_ss = thruster_props.Pc;
+            z     = thruster_props.z;
+            wn    = thruster_props.wn;
+            T0_ss = thruster_props.T0;
+            ga    = thruster_props.gam;
+            M_sup = thruster_props.M_sup;
+            lam   = thruster_props.lam;
+            ER    = thruster_props.ER;
+            At    = thruster_props.Athroat;
+            Rg    = thruster_props.Rg;
+            M_sub = thruster_props.M_sub;
+            Ae    = thruster_props.Aexit;
+            
+            t     = obj.t_trail_off(1,index);
+            
+            P0=P_inf+(P0_ss-P_inf)*(exp(-z*wn*t)*(z*sinh(sqrt(z^2-1)*wn*t)/sqrt(z^2-1)+cosh(sqrt(z^2-1)*wn*t)));
+            T0=T0_ss*(P0/P0_ss)^(ga/(ga-1));
+    
+            if (P0/P_inf) >= ((0.5*(ga+1))^(ga/(ga-1)))  % choked
+        
+                Pe=P0/(1+0.5*(ga-1)*M_sup^2)^(ga/(ga-1));
+                CF=lam*ga*sqrt(2/(ga-1)*(2/(ga+1))^((ga+1)/(ga-1))*(1-(Pe/P0)^((ga-1)/ga)))+ER*((Pe-P_inf)/P0);
+                force=CF*P0*At;
+
+            else % unchoked
+        
+                mdot=At*P0*sqrt((2*ga/((ga-1)*Rg*T0))*((P_inf/P0)^(2/ga)-(P_inf/P0)^((ga+1)/ga)));
+                Pe=P0/(1+0.5*(ga-1)*M_sub^2)^(ga/(ga-1));
+                Te=T0/(1+0.5*(ga-1)*M_sub^2);
+                Ve=M_sub*sqrt(ga*Rg*Te);
+        
+                force=lam*mdot*Ve+Ae*(Pe-P_inf);
+            end
+            
+            obj.fired(i,index)=true;
+            
+            if force < 0 
+                obj.decayy(1,index) = false;
+                force = 0;
+                obj.fired(i,index)=false;
+            end
+            
+            
+            thruster(index).F=(force/4.448)*(thruster(index).F/norm(thruster(index).F));
+            thruster(index).mag=norm(thruster(index).F);
+            obj.Fsav(i,index)=thruster(index).mag;
+            
+            if type == 2
+                obj.P_thrusters(1,index).F = thruster(index).F;
+                obj.P_thrusters(1,index).mag= thruster(index).mag;
+            elseif type == 3
+                obj.Y_thrusters(1,index).F = thruster(index).F;
+                obj.Y_thrusters(1,index).mag= thruster(index).mag;
+            end
+            
+            wT=thruster(index);
+            M = calc_momentt(obj,wT);          
+             
         end
         
         function obj = update_timers(obj,i)
@@ -230,9 +324,14 @@ classdef PY_Control < handle
                 if obj.fired(i,k)== true
                     obj.t_single_fire(1,k) = obj.t_single_fire(1,k)+obj.dt;
                     obj.t_total_fire(1,k)  = obj.t_total_fire(1,k)+obj.dt;
+                    
+                    if obj.decayy(1,k)==true
+                        obj.t_trail_off(1,k)=obj.t_trail_off(1,k)+obj.dt;
+                    end
                 else
                     % reset timers of deactivated thrusters.
                     obj.t_single_fire(1,k) = 0.0;
+                    obj.t_trail_off(1,k) = 0.0;
                 end
             end
         end
@@ -240,10 +339,12 @@ classdef PY_Control < handle
         function [obj,M]=repeat_fire(obj,index,M_prev,type,i)
             % return the previous moment of the axis of interest.
             if type == 2
-                M = [0,M_prev(2),0];
+                M = [0,M_prev(2),0];                
             elseif type == 3
                 M = [0,0,M_prev(3)];
             end
+            
+            obj.Fsav(i,:)=obj.Fsav(i-1,:);
             
             % record current thruster activation 
             for k=1:length(index)
@@ -252,7 +353,7 @@ classdef PY_Control < handle
             
         end
         
-        function [obj,M] = fire_by_location(obj,history,thruster,i) 
+        function [obj,M,thruster_props] = fire_by_location(obj,history,thruster,thruster_props,type,i) 
             
             % current ang vel and switching line #1 ang vel
             line1rate   = obj.line1_rate(i);
@@ -276,18 +377,46 @@ classdef PY_Control < handle
                     % fire thrusters to decrease ang vel (above sl #1)
                     for k=1:LH
                         if thruster(k).sign_M == -1
-                            wT = [wT, thruster(k)];
                             obj.fired(i,k)=true;
+                            if obj.t_single_fire(1,k)==0
+                                thruster_props=add_variability(thruster_props);
+                                force=P_to_F(thruster_props);
+                                thruster(k).F=(force/4.448)*thruster(k).unit_F;
+                                thruster(k).mag=norm(thruster(k).F);
+                                thruster(k).isp=thruster_props.isp;
+                                
+                                if type == 2
+                                    obj.P_thrusters(k).F=thruster(k).F;
+                                    obj.P_thrusters(k).mag=thruster(k).mag;
+                                elseif type == 3
+                                    obj.Y_thrusters(1,k).F = thruster(k).F;
+                                    obj.Y_thrusters(1,k).mag= thruster(k).mag;
+                                end
+                            
+                            end
+                            obj.Fsav(i,k)=thruster(k).mag;
+                            wT = [wT, thruster(k)];
+                            
                         end                                              
-                    end                                     
+                    end
+                    
                 else
                     % fire thrusters to increase ang vel (below sl#2)
                     for k=1:LH
                         if thruster(k).sign_M == 1
-                            wT = [wT, thruster(k)];
                             obj.fired(i,k)=true;
+                            if obj.t_single_fire(1,k)==0
+                                thruster_props=add_variability(thruster_props);
+                                force=P_to_F(thruster_props);
+                                thruster(k).F=(force/4.448)*thruster(k).unit_F;
+                                thruster(k).mag=norm(thruster(k).F);
+                                thruster(k).isp=thruster_props.isp;
+                            end
+                            obj.Fsav(i,k)=thruster(k).mag;
+                            wT = [wT, thruster(k)];
                         end                                               
-                    end                    
+                    end
+                    
                 end
                 
                 % sum moments of thrusters in wT
@@ -331,6 +460,7 @@ classdef PY_Control < handle
             
             % loop through thrusters and calculate moment
             for k=1:length(thrust_array)
+                
                 r = thrust_array(k).R;
                 f = thrust_array(k).F;
                 

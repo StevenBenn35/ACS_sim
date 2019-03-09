@@ -7,6 +7,7 @@ classdef Thrusters < handle
     properties
         R         % position vector, in
         F         % thrust vector, lbf
+        unit_F    % thrust unit vector
         mag       % magnitude of thrust vector, lbf
         isp       % specific impulse, sec
         t_min     % minimum thruster activation time, sec

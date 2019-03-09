@@ -6,8 +6,8 @@
 function [ total_time, dt, g0, g, euler, omega, thruster, mass, I,      ...
            OF, CG0, dCG, tau, reorient_angle, sim_end, pitch, yaw,      ...
            theta_max, psi_max, dim, init_loc, Data_File, events,        ...
-           mm_thrust, Nmodes, Rtank, bot_tank, htank, rho, damp, zeta]  ...
-           = import_data(sim)
+           mm_thrust, Nmodes, Rtank, bot_tank, htank, rho, damp, zeta,  ...
+           thruster_props]= import_data(sim)
     %---------------------------------------------------------------------%
     % PARSE DATA           
     % "data_file"
@@ -72,14 +72,53 @@ function [ total_time, dt, g0, g, euler, omega, thruster, mass, I,      ...
              sim.stage.CG_dry.z];  % dry stage CG location, in  
 
     % "thruster"   
-    f_thrust_roll  = sim.thruster.roll_thrust_mag;  % roll thrusters, lbf
-    f_thrust_pitch = sim.thruster.pitch_thrust_mag; % pitch thrusters, lbf
-    f_thrust_yaw   = sim.thruster.yaw_thrust_mag;   % yaw thrusters, lbf
+    %f_thrust_roll  = sim.thruster.roll_thrust_mag;  % roll thrusters, lbf
+    %f_thrust_pitch = sim.thruster.pitch_thrust_mag; % pitch thrusters, lbf
+    %f_thrust_yaw   = sim.thruster.yaw_thrust_mag;   % yaw thrusters, lbf
     isp            = sim.thruster.isp;              % specific impulse of thrusters, sec
     min_fire       = sim.thruster.min_fire;         % minimum activation time, sec
-    R_mf_dt        = sim.thruster.R_min_fire_to_dt; % Ratio of min activation time to timestep
-    dt             = min_fire/R_mf_dt;              % simulation sample rate, sec
+    %R_mf_dt        = sim.thruster.R_min_fire_to_dt; % Ratio of min activation time to timestep
+    %dt             = min_fire/R_mf_dt;              % simulation sample rate, sec
+    dt             = sim.simulation.dt;
     dim            = floor(total_time/dt);          % preallocation dimension length
+    thruster_props.Pc_avg = sim.thruster.Pc*6894.76; %psia to pa               
+    thruster_props.z_avg  = sim.thruster.zeta;            
+    thruster_props.wn_avg = sim.thruster.wn;             
+    thruster_props.isp_avg = sim.thruster.isp;
+    thruster_props.Pc = sim.thruster.Pc*6894.76; %psia to pa               
+    thruster_props.z  = sim.thruster.zeta;            
+    thruster_props.wn = sim.thruster.wn;             
+    thruster_props.isp = sim.thruster.isp;
+    thruster_props.U_isp  = sim.thruster.U_isp;             
+    thruster_props.U_Pc   = sim.thruster.U_Pc;        
+    thruster_props.U_z    = sim.thruster.U_zeta;           
+    thruster_props.U_wn   = sim.thruster.U_wn;             
+    thruster_props.T0     = sim.thruster.T0;           
+    thruster_props.gam    = sim.thruster.gam;            
+    thruster_props.MW     = sim.thruster.MW;         
+    thruster_props.P_inf  = sim.thruster.P_inf;
+
+    thruster_props.Dthroat= sim.thruster.Dt;
+    thruster_props.ER = sim.thruster.ER;
+    thruster_props.th = sim.thruster.th;
+
+    thruster_props.Ru = sim.thruster.Ru;
+    
+    thruster_props.M_sup=ER_to_M(thruster_props.ER,1.05,thruster_props.gam);
+    thruster_props.M_sub=ER_to_M(thruster_props.ER,0.1,thruster_props.gam);
+
+    thruster_props.Te=thruster_props.T0/(1+0.5*(thruster_props.gam-1)*thruster_props.M_sup^2);
+
+    thruster_props.Athroat=(pi/4)*thruster_props.Dthroat^2;
+    thruster_props.Aexit=thruster_props.Athroat*thruster_props.ER;
+    thruster_props.lam=0.5*(1+cos(thruster_props.th));
+
+    thruster_props.Rg=thruster_props.Ru/thruster_props.MW;
+    
+    f_thrust_roll=P_to_F(thruster_props);
+    f_thrust_roll=f_thrust_roll/4.448;
+    f_thrust_pitch=f_thrust_roll;
+    f_thrust_yaw = f_thrust_roll;
     
     dCG = [(CGf(1)-CG0(1))/(total_time/dt), ...    
            (CGf(2)-CG0(2))/(total_time/dt), ... 

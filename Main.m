@@ -18,8 +18,8 @@
 %=========================================================================% 
 
 clc; clear variables; close all; 
-addpath Utilities
-addpath Output_Files
+% addpath Utilities
+% addpath Output_Files
 
 %-------------------------------------------------------------------------% 
 % INPUT SIMULATION PARAMETERS                                             
@@ -28,7 +28,7 @@ sim = input_file();
 [total_time, dt, g0, g, angles, rates, thruster, mass0, I0, OF, CG0,  ...
  dCG, tau, reorient, sim_end, pitch, yaw, theta_max, psi_max, dim,    ...
  init_loc, Data_File, sim_complete, mm_thrust, Nroots, Rtank,         ...
- bot_tank, htank, rho, damp, zeta] = import_data(sim);
+ bot_tank, htank, rho, damp, zeta, thruster_props] = import_data(sim);
 
 %-------------------------------------------------------------------------%
 % PREALLOCATION OF DATA ARRAYS
@@ -86,13 +86,16 @@ N    = total_time/dt;
 mass_calculator = zeros(length(sim_complete.sequence),1);
 
 while loop == true
-
+    if i== 964
+        xxxxx=1;
+    end
+    
     % maneuver sequence    
     [ roll_ctrl, elevation_ctrl, heading_ctrl, ecr, hcr, mm_thrust,     ...
-      M(i,:), M_ax(i,:), mass_calculator, state, fuel_burned]           ...
+      M(i,:), M_ax(i,:), mass_calculator, state, fuel_burned,thruster_props]           ...
       = event_sequence(roll_ctrl, elevation_ctrl, heading_ctrl, ecr,    ...
       hcr, sim_complete, state, thruster, M(:,:), mm_thrust, dt, pitch, ...
-      yaw, g0, i, mass_calculator, fuel_burned);
+      yaw, g0, i, mass_calculator, fuel_burned,thruster_props);
         
     % activation history of thrusters and total mass attenuation 
     firing_state = [roll_ctrl.fired(i,:),elevation_ctrl.fired(i,:), ...

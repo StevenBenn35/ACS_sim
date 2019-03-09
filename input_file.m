@@ -3,18 +3,19 @@
 function sim = input_file()
 %-------------------------------------------------------------------------%
 % DATA FILE SPECIFICATION
-    sim.data_file.output_file = 'Output_Files/states.txt';
+    sim.data_file.output_file = 'states.txt';
     
 %-------------------------------------------------------------------------%
 % GENERAL SIMULATION PARAMETERS AND MANEUVERS
-    sim.simulation.time                            = 270; 
-    sim.simulation.end_condition                   = 1;
+    sim.simulation.time                            = 60;
+    sim.simulation.dt                              = 0.001;
+    sim.simulation.end_condition                   = 2;
     sim.simulation.ref_gravity                     = 32.174; 
     sim.simulation.G                               = 0;
-    sim.simulation.maneuvers.sequence              = [3,4,5,6];
+    sim.simulation.maneuvers.sequence              = [5];
     sim.simulation.maneuvers.spin_up_rate          = 5.0; 
     sim.simulation.maneuvers.coast_time            = 10; 
-    sim.simulation.maneuvers.nutation_damping_time = 10; 
+    sim.simulation.maneuvers.nutation_damping_time = 50; 
     sim.simulation.maneuvers.reorient_time         = 20; 
     sim.simulation.maneuvers.reorientation_angle   = 15; 
 
@@ -57,9 +58,32 @@ function sim = input_file()
     sim.thruster.roll_thrust_mag   = 5;
     sim.thruster.pitch_thrust_mag  = 5;
     sim.thruster.yaw_thrust_mag    = 5;
-    sim.thruster.isp               = 80;
-    sim.thruster.min_fire          = 0.05;
-    sim.thruster.R_min_fire_to_dt  = 5;
+    sim.thruster.min_fire          = 0.2;
+%     sim.thruster.R_min_fire_to_dt  = 5;
+    sim.thruster.isp               = 274.78;
+%     sim.thruster.Pc                = 188.706; %psia
+    sim.thruster.Pc                = 69.618117;
+%     sim.thruster.zeta              = 1.7025;
+    sim.thruster.zeta              = 1.25;
+%     sim.thruster.wn                = 31.12;
+    sim.thruster.wn                = 500;
+    sim.thruster.U_isp             = 1.48111;
+%     sim.thruster.U_Pc              = 4.29153; %psia
+    sim.thruster.U_Pc              = 1.5567; %psia
+%     sim.thruster.U_zeta            = 0.1382;
+    sim.thruster.U_zeta            = 0.10147;
+%     sim.thruster.U_wn              = 0.858;
+    sim.thruster.U_wn              = 13.785;
+    sim.thruster.T0                = 3224.1;
+    sim.thruster.gam               = 1.12851;
+    sim.thruster.MW                = 24.9382;
+    sim.thruster.P_inf             = 15.54e+03; %Pa
+
+    sim.thruster.Dt                = 0.4216e-02;
+    sim.thruster.ER                = 9.438;
+    sim.thruster.th                = 8.5*pi/180;
+
+    sim.thruster.Ru                = 8314.4126;
     
     sim.thruster.location(1).x  = 28.6;
     sim.thruster.location(1).y  = 6;
